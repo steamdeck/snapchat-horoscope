@@ -24,14 +24,13 @@ jobs:
 
       - name: Generate Horoscope JSON
         env:
-          OPENROUTER_KEY: ${{ secrets.OPENNNROUTERAIPAPI }}  # Use your actual secret name
+          OPENROUTER_KEY: ${{ secrets.OPENNNROUTERAIPAPI }}
         run: |
-          # Debug: Check if secret is set (masked in logs)
+          # Check if secret exists
           if [ -z "$OPENROUTER_KEY" ]; then
-            echo "ERROR: OPENROUTER_KEY is not set!"
+            echo "ERROR: Secret OPENNNROUTERAIPAPI is not set!"
             exit 1
           fi
-          echo "Secret is set (length: ${#OPENROUTER_KEY})"
           
           ZODIACS=("Aries" "Taurus" "Gemini" "Cancer" "Leo" "Virgo" "Libra" "Scorpio" "Sagittarius" "Capricorn" "Aquarius" "Pisces")
           
@@ -41,35 +40,42 @@ jobs:
           for SIGN in "${ZODIACS[@]}"; do
             echo "Fetching horoscope for $SIGN..."
             
-            # Make request and capture both stdout and stderr
-            HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://openrouter.ai/api/v1/chat/completions" \
+            # Add delay to respect rate limit (20 requests per minute = 3 seconds between requests)
+            if [ "$SIGN" != "Aries" ]; then
+              sleep 3
+            fi
+            
+            RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $OPENROUTER_KEY" \
               -H "HTTP-Referer: https://github.com/${{ github.repository }}" \
               -H "X-Title: Snapchat Horoscope Generator" \
               -d "{
-                \"model\": \"meta-llama/llama-3.1-8b-instruct:free\",
+                \"model\": \"google/gemini-flash-1.5:free\",
                 \"messages\": [
-                  {\"role\": \"system\", \"content\": \"You are an expert astrologer. Keep horoscopes under 100 words.\"},
-                  {\"role\": \"user\", \"content\": \"Give me a horoscope for $SIGN for today, $(date +%B\ %d). Be specific and inspiring.\"}
+                  {\"role\": \"system\", \"content\": \"You are an expert astrologer. Keep horoscopes under 50 words.\"},
+                  {\"role\": \"user\", \"content\": \"Give me a horoscope for $SIGN for today. Be specific and inspiring.\"}
                 ],
                 \"temperature\": 0.7,
-                \"max_tokens\": 150
+                \"max_tokens\": 100
               }" 2>&1)
             
-            HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
-            HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n1)
-            
-            echo "HTTP Status: $HTTP_STATUS"
-            
-            if [ "$HTTP_STATUS" != "200" ]; then
-              echo "API Error for $SIGN: $HTTP_BODY"
-              TEXT="The stars are aligning for $SIGN today, but the cosmic connection is fuzzy. Check back later!"
+            # Check if response is valid JSON
+            if ! echo "$RESPONSE" | jq -e . >/dev/null 2>&1; then
+              echo "Invalid JSON response for $SIGN: $RESPONSE"
+              TEXT="The stars align for $SIGN! Trust your intuition today as cosmic energies favor bold decisions."
             else
-              TEXT=$(echo "$HTTP_BODY" | jq -r '.choices[0].message.content // empty')
-              if [ -z "$TEXT" ]; then
-                echo "Empty response for $SIGN: $HTTP_BODY"
-                TEXT="The cosmic energies for $SIGN are mysterious today. Trust your intuition!"
+              # Check for API errors
+              ERROR=$(echo "$RESPONSE" | jq -r '.error.message // empty')
+              if [ -n "$ERROR" ]; then
+                echo "API Error for $SIGN: $ERROR"
+                TEXT="The stars align for $SIGN! Trust your intuition today as cosmic energies favor bold decisions."
+              else
+                TEXT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+                if [ -z "$TEXT" ] || [ "$TEXT" == "null" ]; then
+                  echo "Empty content for $SIGN"
+                  TEXT="The stars align for $SIGN! Trust your intuition today as cosmic energies favor bold decisions."
+                fi
               fi
             fi
             
@@ -77,14 +83,13 @@ jobs:
             TEXT=$(echo "$TEXT" | sed 's/"/\\"/g' | tr -d '\n\r' | sed 's/  */ /g')
             
             echo "  {\"sign\":\"$SIGN\",\"horoscope\":\"$TEXT\"}," >> "$TEMP_FILE"
-            sleep 1  # Rate limiting
           done
           
           sed -i '$ s/,$//' "$TEMP_FILE"
           echo "]" >> "$TEMP_FILE"
           mv "$TEMP_FILE" horoscope.json
           
-          echo "Generated horoscope.json:"
+          echo "Final horoscope.json:"
           cat horoscope.json
 
       - name: Commit and Push
