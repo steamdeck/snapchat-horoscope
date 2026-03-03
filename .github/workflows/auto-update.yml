@@ -2,63 +2,77 @@ name: Daily Horoscope Generator
 
 on:
   schedule:
-    # Runs at 00:00 US Eastern Time (UTC-5/UTC-4 DST)
-    - cron: '0 5 * * *'
-  workflow_dispatch:     # Manual trigger
+    - cron: '0 5 * * *'  # 00:00 US Eastern
+  workflow_dispatch:
+
+# Prevent concurrent runs from conflicting
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false  # Queue instead of cancel
 
 jobs:
   generate_horoscope:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for proper rebasing
+          token: ${{ secrets.GITHUB_TOKEN }}  # Ensure push permissions
 
       - name: Install jq
-        run: sudo apt-get install -y jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Generate Horoscope JSON
         run: |
-          echo "Generating horoscope..."
           ZODIACS=("Aries" "Taurus" "Gemini" "Cancer" "Leo" "Virgo" "Libra" "Scorpio" "Sagittarius" "Capricorn" "Aquarius" "Pisces")
-          echo "[" > horoscope.json
-
+          
+          # Create temp file to avoid partial writes
+          TEMP_FILE=$(mktemp)
+          echo "[" > "$TEMP_FILE"
+          
           for SIGN in "${ZODIACS[@]}"; do
             RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
               -H "Content-Type: application/json" \
-              -H "Authorization: Bearer ${{ secrets.OPENNNROUTERAIPAPI }}" \
+              -H "Authorization: Bearer ${{ secrets.OPENROUTER_API_KEY }}" \
               -d "{
-                    \"model\": \"arcee-ai/trinity-large-preview:free\",
-                    \"messages\": [
-                        {\"role\": \"system\", \"content\": \"You are an expert astrologer.\"},
-                        {\"role\": \"user\", \"content\": \"Give me a horoscope for today for the zodiac sign: $SIGN in one short paragraph.\"}
-                    ],
-                    \"temperature\": 0.7
-                  }")
-
-            TEXT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
-
-            if [ -z "$TEXT" ] || [ "$TEXT" == "null" ]; then
-              TEXT="No horoscope available today."
-            fi
-
-            TEXT=$(echo "$TEXT" | sed 's/"/\\"/g')
-            echo "{\"sign\":\"$SIGN\",\"horoscope\":\"$TEXT\"}," >> horoscope.json
+                \"model\": \"arcee-ai/trinity-large-preview:free\",
+                \"messages\": [
+                  {\"role\": \"system\", \"content\": \"You are an expert astrologer.\"},
+                  {\"role\": \"user\", \"content\": \"Give me a horoscope for today for the zodiac sign: $SIGN in one short paragraph.\"}
+                ],
+                \"temperature\": 0.7
+              }")
+            
+            TEXT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // "No horoscope available today."')
+            TEXT=$(echo "$TEXT" | sed 's/"/\\"/g' | tr -d '\n\r')
+            
+            echo "  {\"sign\":\"$SIGN\",\"horoscope\":\"$TEXT\"}," >> "$TEMP_FILE"
           done
-
-          sed -i '$ s/,$//' horoscope.json
-          echo "]" >> horoscope.json
+          
+          # Remove trailing comma and close array
+          sed -i '$ s/,$//' "$TEMP_FILE"
+          echo "]" >> "$TEMP_FILE"
+          mv "$TEMP_FILE" horoscope.json
 
       - name: Commit and Push
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
           git add horoscope.json
-
-          if ! git diff --cached --quiet; then
-            git commit -m "Daily horoscope update"
-            git pull --rebase origin main
-            git push origin main
-          else
+          
+          if git diff --cached --quiet; then
             echo "No changes to commit."
+            exit 0
           fi
+          
+          git commit -m "Daily horoscope update - $(date -u +%Y-%m-%d)"
+          
+          # Retry loop for race conditions
+          for i in {1..3}; do
+            git pull --rebase origin main && git push origin main && break
+            echo "Push failed, retrying... ($i/3)"
+            sleep 2
+          done
