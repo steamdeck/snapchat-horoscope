@@ -2,13 +2,12 @@ name: Daily Horoscope Generator
 
 on:
   schedule:
-    - cron: '0 5 * * *'  # 00:00 US Eastern
+    - cron: '0 5 * * *'
   workflow_dispatch:
 
-# Prevent concurrent runs from conflicting
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false  # Queue instead of cancel
+  cancel-in-progress: false
 
 jobs:
   generate_horoscope:
@@ -18,43 +17,75 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for proper rebasing
-          token: ${{ secrets.GITHUB_TOKEN }}  # Ensure push permissions
+          fetch-depth: 0
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Generate Horoscope JSON
+        env:
+          OPENROUTER_KEY: ${{ secrets.OPENNNROUTERAIPAPI }}  # Use your actual secret name
         run: |
+          # Debug: Check if secret is set (masked in logs)
+          if [ -z "$OPENROUTER_KEY" ]; then
+            echo "ERROR: OPENROUTER_KEY is not set!"
+            exit 1
+          fi
+          echo "Secret is set (length: ${#OPENROUTER_KEY})"
+          
           ZODIACS=("Aries" "Taurus" "Gemini" "Cancer" "Leo" "Virgo" "Libra" "Scorpio" "Sagittarius" "Capricorn" "Aquarius" "Pisces")
           
-          # Create temp file to avoid partial writes
           TEMP_FILE=$(mktemp)
           echo "[" > "$TEMP_FILE"
           
           for SIGN in "${ZODIACS[@]}"; do
-            RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer ${{ secrets.OPENROUTER_API_KEY }}" \
-              -d "{
-                \"model\": \"arcee-ai/trinity-large-preview:free\",
-                \"messages\": [
-                  {\"role\": \"system\", \"content\": \"You are an expert astrologer.\"},
-                  {\"role\": \"user\", \"content\": \"Give me a horoscope for today for the zodiac sign: $SIGN in one short paragraph.\"}
-                ],
-                \"temperature\": 0.7
-              }")
+            echo "Fetching horoscope for $SIGN..."
             
-            TEXT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // "No horoscope available today."')
-            TEXT=$(echo "$TEXT" | sed 's/"/\\"/g' | tr -d '\n\r')
+            # Make request and capture both stdout and stderr
+            HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://openrouter.ai/api/v1/chat/completions" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $OPENROUTER_KEY" \
+              -H "HTTP-Referer: https://github.com/${{ github.repository }}" \
+              -H "X-Title: Snapchat Horoscope Generator" \
+              -d "{
+                \"model\": \"meta-llama/llama-3.1-8b-instruct:free\",
+                \"messages\": [
+                  {\"role\": \"system\", \"content\": \"You are an expert astrologer. Keep horoscopes under 100 words.\"},
+                  {\"role\": \"user\", \"content\": \"Give me a horoscope for $SIGN for today, $(date +%B\ %d). Be specific and inspiring.\"}
+                ],
+                \"temperature\": 0.7,
+                \"max_tokens\": 150
+              }" 2>&1)
+            
+            HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
+            HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n1)
+            
+            echo "HTTP Status: $HTTP_STATUS"
+            
+            if [ "$HTTP_STATUS" != "200" ]; then
+              echo "API Error for $SIGN: $HTTP_BODY"
+              TEXT="The stars are aligning for $SIGN today, but the cosmic connection is fuzzy. Check back later!"
+            else
+              TEXT=$(echo "$HTTP_BODY" | jq -r '.choices[0].message.content // empty')
+              if [ -z "$TEXT" ]; then
+                echo "Empty response for $SIGN: $HTTP_BODY"
+                TEXT="The cosmic energies for $SIGN are mysterious today. Trust your intuition!"
+              fi
+            fi
+            
+            # Clean text for JSON
+            TEXT=$(echo "$TEXT" | sed 's/"/\\"/g' | tr -d '\n\r' | sed 's/  */ /g')
             
             echo "  {\"sign\":\"$SIGN\",\"horoscope\":\"$TEXT\"}," >> "$TEMP_FILE"
+            sleep 1  # Rate limiting
           done
           
-          # Remove trailing comma and close array
           sed -i '$ s/,$//' "$TEMP_FILE"
           echo "]" >> "$TEMP_FILE"
           mv "$TEMP_FILE" horoscope.json
+          
+          echo "Generated horoscope.json:"
+          cat horoscope.json
 
       - name: Commit and Push
         run: |
@@ -70,9 +101,8 @@ jobs:
           
           git commit -m "Daily horoscope update - $(date -u +%Y-%m-%d)"
           
-          # Retry loop for race conditions
           for i in {1..3}; do
             git pull --rebase origin main && git push origin main && break
-            echo "Push failed, retrying... ($i/3)"
+            echo "Retrying push... ($i/3)"
             sleep 2
           done
