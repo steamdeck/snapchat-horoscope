@@ -2,103 +2,123 @@ name: Daily Horoscope Generator
 
 on:
   schedule:
-    - cron: '0 5 * * *'
+    - cron: '0 6 * * *'   # 6 AM UTC daily
   workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
 
 jobs:
   generate_horoscope:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Generate Horoscope JSON
+      - name: Generate horoscopes via OpenRouter API
         env:
-          OPENROUTER_KEY: ${{ secrets.OPENNNROUTERAIPAPI }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           echo "Generating horoscopes via OpenRouter API..."
-          
-          # Single API call to generate all 12 horoscopes
-          RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $OPENROUTER_KEY" \
-            -H "HTTP-Referer: https://github.com/${{ github.repository }}" \
-            -H "X-Title: Snapchat Horoscope Generator" \
-            -d "{
-              \"model\": \"google/gemini-flash-1.5:free\",
-              \"messages\": [
-                {
-                  \"role\": \"system\", 
-                  \"content\": \"You are an expert astrologer. Generate today's horoscope for all 12 zodiac signs. Return ONLY a valid JSON array with this exact format: [{\\\"sign\\\":\\\"Aries\\\",\\\"horoscope\\\":\\\"...\\\"},...]. Each horoscope should be 1-2 sentences, specific and inspiring. Include all signs: Aries, Taurus, Gemini, Cancer, Leo, Virgo, Libra, Scorpio, Sagittarius, Capricorn, Aquarius, Pisces.\"
-                },
-                {
-                  \"role\": \"user\", 
-                  \"content\": \"Generate today's horoscopes for all 12 zodiac signs as a JSON array.\"
-                }
-              ],
-              \"temperature\": 0.8,
-              \"max_tokens\": 2000
-            }")
-          
-          echo "Raw API Response:"
-          echo "$RESPONSE" | jq .
-          
-          # Extract the content
-          CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
-          
-          if [ -z "$CONTENT" ] || [ "$CONTENT" == "null" ]; then
-            echo "ERROR: Empty response from API"
-            echo "Full response: $RESPONSE"
-            exit 1
-          fi
-          
-          # Clean up the content (remove markdown code blocks if present)
-          CLEAN_CONTENT=$(echo "$CONTENT" | sed 's/```json//g' | sed 's/```//g' | sed 's/^ *//g')
-          
-          echo "Cleaned content:"
-          echo "$CLEAN_CONTENT"
-          
-          # Validate JSON and save
-          if echo "$CLEAN_CONTENT" | jq . > /dev/null 2>&1; then
-            echo "$CLEAN_CONTENT" | jq . > horoscope.json
-            echo "Successfully generated horoscope.json:"
-            cat horoscope.json
-          else
-            echo "ERROR: Invalid JSON received"
-            echo "Attempting to parse anyway..."
-            echo "$CLEAN_CONTENT" > horoscope.json.raw
-            
-            # Fallback: create valid JSON with error message
-            echo '[{"sign":"Error","horoscope":"Failed to generate horoscopes. Please check API response."}]' > horoscope.json
+
+          make_api_call() {
+            local MODEL="$1"
+            echo "Trying model: $MODEL"
+
+            RESPONSE=$(curl -s -w "\n__HTTP_STATUS__%{http_code}" \
+              -X POST "https://openrouter.ai/api/v1/chat/completions" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+              -H "HTTP-Referer: https://github.com/${{ github.repository }}" \
+              -H "X-Title: Snapchat Horoscope Generator" \
+              -d "{
+                \"model\": \"$MODEL\",
+                \"messages\": [
+                  {
+                    \"role\": \"system\",
+                    \"content\": \"You are an expert astrologer. Generate today's horoscope for all 12 zodiac signs. Return ONLY a valid JSON array — no markdown, no code fences, no explanation. Use this exact format: [{\\\"sign\\\":\\\"Aries\\\",\\\"horoscope\\\":\\\"...\\\"},...]. Each horoscope should be 1-2 sentences, specific and inspiring. Include all 12 signs in order: Aries, Taurus, Gemini, Cancer, Leo, Virgo, Libra, Scorpio, Sagittarius, Capricorn, Aquarius, Pisces.\"
+                  },
+                  {
+                    \"role\": \"user\",
+                    \"content\": \"Generate today's horoscopes for all 12 zodiac signs as a JSON array. Return only the JSON, nothing else.\"
+                  }
+                ],
+                \"temperature\": 0.8,
+                \"max_tokens\": 2000
+              }")
+
+            HTTP_STATUS=$(echo "$RESPONSE" | tail -n1 | sed 's/__HTTP_STATUS__//')
+            BODY=$(echo "$RESPONSE" | sed '$d')
+
+            echo "HTTP Status: $HTTP_STATUS"
+            echo "Raw response body:"
+            echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+
+            if [ "$HTTP_STATUS" != "200" ]; then
+              echo "ERROR: Non-200 HTTP status ($HTTP_STATUS)"
+              return 1
+            fi
+
+            # Check for API-level error in response body
+            ERROR_MSG=$(echo "$BODY" | jq -r '.error.message // empty')
+            if [ -n "$ERROR_MSG" ]; then
+              echo "ERROR: API returned error: $ERROR_MSG"
+              return 1
+            fi
+
+            CONTENT=$(echo "$BODY" | jq -r '.choices[0].message.content // empty')
+
+            if [ -z "$CONTENT" ] || [ "$CONTENT" = "null" ]; then
+              echo "ERROR: Empty content in response"
+              return 1
+            fi
+
+            echo "Extracted content:"
+            echo "$CONTENT"
+
+            # Strip markdown code fences if the model added them anyway
+            CLEAN=$(echo "$CONTENT" \
+              | sed 's/^```json[[:space:]]*//' \
+              | sed 's/^```[[:space:]]*//' \
+              | sed 's/[[:space:]]*```$//' \
+              | sed '/^[[:space:]]*$/d')
+
+            echo "Cleaned content:"
+            echo "$CLEAN"
+
+            if echo "$CLEAN" | jq 'if type == "array" and length == 12 then . else error("bad shape") end' > /dev/null 2>&1; then
+              echo "$CLEAN" | jq '.' > horoscope.json
+              echo "Successfully wrote horoscope.json"
+              cat horoscope.json
+              return 0
+            else
+              echo "ERROR: JSON is invalid or does not contain 12 items"
+              echo "jq error output:"
+              echo "$CLEAN" | jq . 2>&1 || true
+              return 1
+            fi
+          }
+
+          # Try models in order — put a reliable paid/free model first
+          MODELS=(
+            "arcee-ai/trinity-large-preview:free"
+          )
+
+          SUCCESS=false
+          for MODEL in "${MODELS[@]}"; do
+            if make_api_call "$MODEL"; then
+              SUCCESS=true
+              break
+            fi
+            echo "Model $MODEL failed, trying next..."
+            sleep 2
+          done
+
+          if [ "$SUCCESS" = false ]; then
+            echo "FATAL: All models failed. Exiting."
             exit 1
           fi
 
-      - name: Commit and Push
+      - name: Commit horoscope.json
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add horoscope.json
-          
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-            exit 0
-          fi
-          
-          git commit -m "Daily horoscope update - $(date -u +%Y-%m-%d)"
-          
-          for i in {1..3}; do
-            git pull --rebase origin main && git push origin main && break
-            echo "Retrying push... ($i/3)"
-            sleep 2
-          done
+          git diff --cached --quiet || git commit -m "chore: daily horoscope $(date -u +%Y-%m-%d)"
+          git push
