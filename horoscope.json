@@ -1,14 +1,50 @@
 [
-  {"sign":"Aries","horoscope":"The stars align for Aries! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Taurus","horoscope":"The stars align for Taurus! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Gemini","horoscope":"The stars align for Gemini! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Cancer","horoscope":"The stars align for Cancer! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Leo","horoscope":"The stars align for Leo! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Virgo","horoscope":"The stars align for Virgo! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Libra","horoscope":"The stars align for Libra! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Scorpio","horoscope":"The stars align for Scorpio! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Sagittarius","horoscope":"The stars align for Sagittarius! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Capricorn","horoscope":"The stars align for Capricorn! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Aquarius","horoscope":"The stars align for Aquarius! Trust your intuition today as cosmic energies favor bold decisions."},
-  {"sign":"Pisces","horoscope":"The stars align for Pisces! Trust your intuition today as cosmic energies favor bold decisions."}
+  {
+    "sign": "Aries",
+    "horoscope": "Your energy is high today, Aries. Channel it into a creative project that's been on your mind. The results will be rewarding."
+  },
+  {
+    "sign": "Taurus",
+    "horoscope": "Taurus, today is perfect for nurturing relationships. Reach out to a friend or loved one and strengthen your bond. Your efforts will be deeply appreciated."
+  },
+  {
+    "sign": "Gemini",
+    "horoscope": "Gemini, your curiosity is piqued today. Dive into a new book or subject that intrigues you. You'll gain valuable insights and broaden your horizons."
+  },
+  {
+    "sign": "Cancer",
+    "horoscope": "Cancer, today is a day for introspection. Take some time to reflect on your goals and aspirations. You'll find clarity and renewed motivation."
+  },
+  {
+    "sign": "Leo",
+    "horoscope": "Leo, your charisma is shining brightly today. Use it to inspire and uplift those around you. Your positive energy will be contagious."
+  },
+  {
+    "sign": "Virgo",
+    "horoscope": "Virgo, today is ideal for organizing and decluttering. Tackle that messy space or project you've been avoiding. You'll feel a great sense of accomplishment."
+  },
+  {
+    "sign": "Libra",
+    "horoscope": "Libra, your diplomatic skills are in high demand today. Use them to mediate a conflict or bring harmony to a group. Your efforts will be greatly valued."
+  },
+  {
+    "sign": "Scorpio",
+    "horoscope": "Scorpio, today is a day for deep emotional connections. Share your feelings with someone you trust. You'll experience a profound sense of intimacy and understanding."
+  },
+  {
+    "sign": "Sagittarius",
+    "horoscope": "Sagittarius, your adventurous spirit is calling. Plan a spontaneous outing or explore a new place. The experience will invigorate your soul."
+  },
+  {
+    "sign": "Capricorn",
+    "horoscope": "Capricorn, today is a day for strategic planning. Focus on your long-term goals and create a roadmap to achieve them. Your discipline will pay off."
+  },
+  {
+    "sign": "Aquarius",
+    "horoscope": "Aquarius, your innovative ideas are in the spotlight today. Share them with others and watch as they gain traction. Your creativity will be celebrated."
+  },
+  {
+    "sign": "Pisces",
+    "horoscope": "Pisces, today is a day for artistic expression. Engage in a creative activity that brings you joy. Your imagination will soar and inspire others."
+  }
 ]
