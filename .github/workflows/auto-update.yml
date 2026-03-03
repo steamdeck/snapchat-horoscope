@@ -1,57 +1,37 @@
-name: Daily Horoscope Generator
+- name: Generate Horoscope JSON
+  run: |
+    echo "Generating horoscope..."
+    ZODIACS=("Aries" "Taurus" "Gemini" "Cancer" "Leo" "Virgo" "Libra" "Scorpio" "Sagittarius" "Capricorn" "Aquarius" "Pisces")
+    echo "[" > horoscope.json
 
-on:
-  schedule:
-    - cron: '0 0 * * *'   # 00:00 UTC daily
-  workflow_dispatch:       # Allows manual run
+    for SIGN in "${ZODIACS[@]}"; do
+      RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer ${{ secrets.API_KEY }}" \
+        -d "{
+              \"model\": \"arcee-ai/trinity-large-preview:free\",
+              \"messages\": [
+                {\"role\": \"system\", \"content\": \"You are an expert astrologer.\"},
+                {\"role\": \"user\", \"content\": \"Give me a horoscope for today for the zodiac sign: $SIGN in one short paragraph.\"}
+              ],
+              \"temperature\": 0.7
+            }")
 
-jobs:
-  generate_horoscope:
-    runs-on: ubuntu-latest
+      # Extract generated text using the correct path
+      TEXT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      # Fallback if empty
+      if [ -z "$TEXT" ] || [ "$TEXT" == "null" ]; then
+        TEXT="No horoscope available today."
+      fi
 
-      - name: Generate Horoscope JSON
-        run: |
-          echo "Generating horoscope..."
+      # Escape quotes
+      TEXT=$(echo "$TEXT" | sed 's/"/\\"/g')
 
-          # Define zodiac signs
-          ZODIACS=("Aries" "Taurus" "Gemini" "Cancer" "Leo" "Virgo" "Libra" "Scorpio" "Sagittarius" "Capricorn" "Aquarius" "Pisces")
+      # Append to JSON
+      echo "{\"sign\":\"$SIGN\",\"horoscope\":\"$TEXT\"}," >> horoscope.json
+    done
 
-          # Start JSON array
-          echo "[" > horoscope.json
-
-          # Loop over zodiac signs
-          for SIGN in "${ZODIACS[@]}"; do
-            RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer ${{ secrets.API_KEY }}" \
-              -d "{
-                    \"model\": \"arcee-ai/trinity-large-preview:free\",
-                    \"messages\": [
-                        {\"role\": \"system\", \"content\": \"You are an expert astrologer.\"},
-                        {\"role\": \"user\", \"content\": \"Give me a horoscope for today for the zodiac sign: $SIGN in one short paragraph.\"}
-                    ],
-                    \"temperature\": 0.7
-                  }")
-
-            # Extract the generated text
-            TEXT=$(echo $RESPONSE | jq -r '.choices[0].message.content' | sed 's/"/\\"/g')
-
-            # Append to JSON
-            echo "{\"sign\":\"$SIGN\",\"horoscope\":\"$TEXT\"}," >> horoscope.json
-          done
-
-          # Remove trailing comma and close JSON array
-          sed -i '$ s/,$//' horoscope.json
-          echo "]" >> horoscope.json
-
-      - name: Commit and Push
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
-          git add horoscope.json
-          git commit -m "Daily horoscope update"
-          git push
+    # Remove trailing comma and close JSON array
+    sed -i '$ s/,$//' horoscope.json
+    echo "]" >> horoscope.json
