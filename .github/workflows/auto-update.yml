@@ -26,71 +26,62 @@ jobs:
         env:
           OPENROUTER_KEY: ${{ secrets.OPENNNROUTERAIPAPI }}
         run: |
-          # Check if secret exists
-          if [ -z "$OPENROUTER_KEY" ]; then
-            echo "ERROR: Secret OPENNNROUTERAIPAPI is not set!"
+          echo "Generating horoscopes via OpenRouter API..."
+          
+          # Single API call to generate all 12 horoscopes
+          RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $OPENROUTER_KEY" \
+            -H "HTTP-Referer: https://github.com/${{ github.repository }}" \
+            -H "X-Title: Snapchat Horoscope Generator" \
+            -d "{
+              \"model\": \"google/gemini-flash-1.5:free\",
+              \"messages\": [
+                {
+                  \"role\": \"system\", 
+                  \"content\": \"You are an expert astrologer. Generate today's horoscope for all 12 zodiac signs. Return ONLY a valid JSON array with this exact format: [{\\\"sign\\\":\\\"Aries\\\",\\\"horoscope\\\":\\\"...\\\"},...]. Each horoscope should be 1-2 sentences, specific and inspiring. Include all signs: Aries, Taurus, Gemini, Cancer, Leo, Virgo, Libra, Scorpio, Sagittarius, Capricorn, Aquarius, Pisces.\"
+                },
+                {
+                  \"role\": \"user\", 
+                  \"content\": \"Generate today's horoscopes for all 12 zodiac signs as a JSON array.\"
+                }
+              ],
+              \"temperature\": 0.8,
+              \"max_tokens\": 2000
+            }")
+          
+          echo "Raw API Response:"
+          echo "$RESPONSE" | jq .
+          
+          # Extract the content
+          CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+          
+          if [ -z "$CONTENT" ] || [ "$CONTENT" == "null" ]; then
+            echo "ERROR: Empty response from API"
+            echo "Full response: $RESPONSE"
             exit 1
           fi
           
-          ZODIACS=("Aries" "Taurus" "Gemini" "Cancer" "Leo" "Virgo" "Libra" "Scorpio" "Sagittarius" "Capricorn" "Aquarius" "Pisces")
+          # Clean up the content (remove markdown code blocks if present)
+          CLEAN_CONTENT=$(echo "$CONTENT" | sed 's/```json//g' | sed 's/```//g' | sed 's/^ *//g')
           
-          TEMP_FILE=$(mktemp)
-          echo "[" > "$TEMP_FILE"
+          echo "Cleaned content:"
+          echo "$CLEAN_CONTENT"
           
-          for SIGN in "${ZODIACS[@]}"; do
-            echo "Fetching horoscope for $SIGN..."
+          # Validate JSON and save
+          if echo "$CLEAN_CONTENT" | jq . > /dev/null 2>&1; then
+            echo "$CLEAN_CONTENT" | jq . > horoscope.json
+            echo "Successfully generated horoscope.json:"
+            cat horoscope.json
+          else
+            echo "ERROR: Invalid JSON received"
+            echo "Attempting to parse anyway..."
+            echo "$CLEAN_CONTENT" > horoscope.json.raw
             
-            # Add delay to respect rate limit (20 requests per minute = 3 seconds between requests)
-            if [ "$SIGN" != "Aries" ]; then
-              sleep 3
-            fi
-            
-            RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer $OPENROUTER_KEY" \
-              -H "HTTP-Referer: https://github.com/${{ github.repository }}" \
-              -H "X-Title: Snapchat Horoscope Generator" \
-              -d "{
-                \"model\": \"google/gemini-flash-1.5:free\",
-                \"messages\": [
-                  {\"role\": \"system\", \"content\": \"You are an expert astrologer. Keep horoscopes under 50 words.\"},
-                  {\"role\": \"user\", \"content\": \"Give me a horoscope for $SIGN for today. Be specific and inspiring.\"}
-                ],
-                \"temperature\": 0.7,
-                \"max_tokens\": 100
-              }" 2>&1)
-            
-            # Check if response is valid JSON
-            if ! echo "$RESPONSE" | jq -e . >/dev/null 2>&1; then
-              echo "Invalid JSON response for $SIGN: $RESPONSE"
-              TEXT="The stars align for $SIGN! Trust your intuition today as cosmic energies favor bold decisions."
-            else
-              # Check for API errors
-              ERROR=$(echo "$RESPONSE" | jq -r '.error.message // empty')
-              if [ -n "$ERROR" ]; then
-                echo "API Error for $SIGN: $ERROR"
-                TEXT="The stars align for $SIGN! Trust your intuition today as cosmic energies favor bold decisions."
-              else
-                TEXT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
-                if [ -z "$TEXT" ] || [ "$TEXT" == "null" ]; then
-                  echo "Empty content for $SIGN"
-                  TEXT="The stars align for $SIGN! Trust your intuition today as cosmic energies favor bold decisions."
-                fi
-              fi
-            fi
-            
-            # Clean text for JSON
-            TEXT=$(echo "$TEXT" | sed 's/"/\\"/g' | tr -d '\n\r' | sed 's/  */ /g')
-            
-            echo "  {\"sign\":\"$SIGN\",\"horoscope\":\"$TEXT\"}," >> "$TEMP_FILE"
-          done
-          
-          sed -i '$ s/,$//' "$TEMP_FILE"
-          echo "]" >> "$TEMP_FILE"
-          mv "$TEMP_FILE" horoscope.json
-          
-          echo "Final horoscope.json:"
-          cat horoscope.json
+            # Fallback: create valid JSON with error message
+            echo '[{"sign":"Error","horoscope":"Failed to generate horoscopes. Please check API response."}]' > horoscope.json
+            exit 1
+          fi
 
       - name: Commit and Push
         run: |
