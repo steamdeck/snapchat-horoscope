@@ -1,14 +1,14 @@
 [
-{"sign":"Aries","horoscope":"null"},
-{"sign":"Taurus","horoscope":"null"},
-{"sign":"Gemini","horoscope":"null"},
-{"sign":"Cancer","horoscope":"null"},
-{"sign":"Leo","horoscope":"null"},
-{"sign":"Virgo","horoscope":"null"},
-{"sign":"Libra","horoscope":"null"},
-{"sign":"Scorpio","horoscope":"null"},
-{"sign":"Sagittarius","horoscope":"null"},
-{"sign":"Capricorn","horoscope":"null"},
-{"sign":"Aquarius","horoscope":"null"},
-{"sign":"Pisces","horoscope":"null"}
+  {"sign":"Aries","horoscope":"No horoscope available today."},
+  {"sign":"Taurus","horoscope":"No horoscope available today."},
+  {"sign":"Gemini","horoscope":"No horoscope available today."},
+  {"sign":"Cancer","horoscope":"No horoscope available today."},
+  {"sign":"Leo","horoscope":"No horoscope available today."},
+  {"sign":"Virgo","horoscope":"No horoscope available today."},
+  {"sign":"Libra","horoscope":"No horoscope available today."},
+  {"sign":"Scorpio","horoscope":"No horoscope available today."},
+  {"sign":"Sagittarius","horoscope":"No horoscope available today."},
+  {"sign":"Capricorn","horoscope":"No horoscope available today."},
+  {"sign":"Aquarius","horoscope":"No horoscope available today."},
+  {"sign":"Pisces","horoscope":"No horoscope available today."}
 ]
