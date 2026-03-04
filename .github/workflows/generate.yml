@@ -1,0 +1,34 @@
+name: Generate Horoscope Images
+
+on:
+  push:
+    paths:
+      - horoscopes.json
+  workflow_dispatch:  # manual trigger if needed
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: pip install pillow
+
+    - name: Generate images
+      run: python generate_images.py
+
+    - name: Commit and push images to gh-pages
+      uses: EndBug/add-and-commit@v9
+      with:
+        author_name: 'github-actions'
+        author_email: 'actions@github.com'
+        message: 'Update horoscope images'
+        add: 'images/*'
