@@ -3,7 +3,7 @@ import json
 import os
 
 # Load JSON
-with open("horoscopes.json", "r") as f:
+with open("snapchat-horoscope/horoscope.json", "r") as f:
     horoscopes = json.load(f)
 
 # Make sure output folder exists
